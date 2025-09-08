@@ -47,9 +47,6 @@ def generate_vinted_url(search_text, catalog_ids=None, size_ids=None, price_to=N
 
     return base_url + "&".join(params)
 
-# === Construction initiale des CHANNELS ===
-CHANNELS = {salon_id: generate_vinted_url(**criteria) for salon_id, criteria in SALON_CRITERIA.items()}
-
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                   "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -66,7 +63,7 @@ if os.path.exists(SEEN_FILE):
         seen_ids = json.load(f)
         seen_ids = {int(k): set(v) for k, v in seen_ids.items()}
 else:
-    seen_ids = {channel_id: set() for channel_id in CHANNELS.keys()}
+    seen_ids = {channel_id: set() for channel_id in SALON_CRITERIA.keys()}
 
 # === Sauvegarde des IDs vus ===
 def save_seen_ids():
@@ -80,7 +77,41 @@ async def log_error(message):
         await log_channel.send(f"⚠️ {message}")
     print(message)
 
-# === Boucle de scraping avancée multi-page ===
+# === Initialisation : remplir seen_ids sans envoyer d'annonces ===
+async def init_seen_ids():
+    await client.wait_until_ready()
+    for channel_id, criteria in SALON_CRITERIA.items():
+        if channel_id not in seen_ids:
+            seen_ids[channel_id] = set()
+        page = 1
+        while True:
+            url = generate_vinted_url(**criteria, page=page)
+            try:
+                r = requests.get(url, headers=HEADERS, timeout=10)
+                if r.status_code != 200:
+                    break
+                soup = BeautifulSoup(r.text, "html.parser")
+                items = soup.find_all("div", class_=["feed-grid__item", "catalog-items__item"])
+                if not items:
+                    break
+                for item in items:
+                    link_tag = item.find("a", href=True)
+                    if not link_tag:
+                        continue
+                    link = link_tag.get("href").strip()
+                    if not link.startswith("http"):
+                        link = "https://www.vinted.fr" + link
+                    match = re.search(r'-(\d+)(?:\?|$)', link)
+                    item_id = match.group(1) if match else link
+                    seen_ids[channel_id].add(item_id)
+            except Exception as e:
+                await log_error(f"Exception init_seen_ids sur {url}: {e}")
+                break
+            page += 1
+    save_seen_ids()
+    await log_error("✅ Initialisation terminée : seules les nouvelles annonces seront envoyées.")
+
+# === Boucle de scraping principale ===
 async def check_vinted():
     await client.wait_until_ready()
     while not client.is_closed():
@@ -110,12 +141,10 @@ async def check_vinted():
                         if not link_tag:
                             continue
 
-                        # URL propre vers l'annonce
                         link = link_tag.get("href").strip()
                         if not link.startswith("http"):
                             link = "https://www.vinted.fr" + link
 
-                        # ID numérique fiable
                         match = re.search(r'-(\d+)(?:\?|$)', link)
                         item_id = match.group(1) if match else link
 
@@ -144,8 +173,8 @@ async def check_vinted():
                         await channel.send(embed=embed)
 
                     if not new_found:
-                        break  # pas de nouvelles annonces
-                    page += 1  # passer à la page suivante
+                        break
+                    page += 1
 
                 except Exception as e:
                     await log_error(f"Exception sur {url}: {e}")
@@ -157,6 +186,9 @@ async def check_vinted():
 async def on_ready():
     print(f"✅ Connecté en tant que {client.user}")
     await log_error(f"Bot connecté en tant que {client.user}")
+    # Initialiser seen_ids sans poster les anciennes annonces
+    await init_seen_ids()
+    # Lancer la boucle principale
     client.loop.create_task(check_vinted())
 
 client.run(TOKEN)
