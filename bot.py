@@ -1,5 +1,6 @@
 import discord, asyncio, os, re
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from pymongo import MongoClient
@@ -7,7 +8,7 @@ from pymongo import MongoClient
 # --- Variables d'environnement ---
 TOKEN = os.getenv("TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-LOG_CHANNEL_ID = 141500000000000000  # Remplace par ton salon de logs si besoin
+LOG_CHANNEL_ID = 141500000000000000  # Remplace par ton salon de logs
 
 # --- Multi-salon / critères ---
 SALON_CRITERIA = {
@@ -56,14 +57,17 @@ def generate_vinted_url(criteria, page=1):
     params.append(f"page={page}")
     return base + "&".join(params)
 
-# --- Selenium headless (ChromeDriver auto-detect) ---
+# --- Selenium headless (Chromium + Chromedriver fixes) ---
 def get_driver():
     options = Options()
+    options.binary_location = "/usr/bin/chromium"  # chemin Chromium sur Railway
     options.add_argument("--headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    driver = webdriver.Chrome(options=options)
+
+    service = Service("/usr/bin/chromedriver")  # chemin Chromedriver sur Railway
+    driver = webdriver.Chrome(service=service, options=options)
     return driver
 
 # --- Initialisation des annonces vues ---
@@ -119,8 +123,8 @@ async def check_vinted(driver):
                         new_found = True
                         title = item.get_attribute("data-title") or "No title"
                         price = item.get_attribute("data-price") or "N/A"
-                        img_tag = item.find_element(By.TAG_NAME, "img")
-                        image_url = img_tag.get_attribute("src") if img_tag else None
+                        img_tag = item.find_elements(By.TAG_NAME, "img")
+                        image_url = img_tag[0].get_attribute("src") if img_tag else None
                         embed = discord.Embed(title=f"{title} - {price}", url=link, color=0xFF5733)
                         if image_url:
                             embed.set_image(url=image_url)
