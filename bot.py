@@ -1,80 +1,131 @@
 import discord
-import requests
 import os
-from discord.ext import tasks
+import asyncio
+import requests
+from bs4 import BeautifulSoup
 
 # === CONFIG BOT ===
-TOKEN = os.getenv("TOKEN")  # récupère ton token depuis Railway
+TOKEN = os.getenv("TOKEN")  # Ton token Discord
+LOG_CHANNEL_ID = 141500000000000000  # Salon pour les logs
 
-# Associe chaque salon Discord à une recherche Vinted
-CHANNELS = {
-    1414204024282026006: "https://www.vinted.fr/api/v2/catalog/items?search_text=stone%20island&catalog_ids=79&price_to=80&currency=EUR&size_ids[]=207&size_ids[]=208&size_ids[]=209&order=newest_first",
-    1414648706271019078: "https://www.vinted.fr/api/v2/catalog/items?search_text=cp%20company&catalog_ids=79&price_to=80&currency=EUR&size_ids[]=207&size_ids[]=208&size_ids[]=209&order=newest_first",
+# === CRITÈRES POUR CHAQUE SALON ===
+# salon_id: critères (marque, catalog, tailles, prix max)
+SALON_CRITERIA = {
+    1414204024282026006: {
+        "search_text": "stone island",
+        "catalog_ids": [79],
+        "size_ids": [207,208,209],
+        "price_to": 80
+    },
+    1414648706271019078: {
+        "search_text": "cp company",
+        "catalog_ids": [79],
+        "size_ids": [207,208,209],
+        "price_to": 80
+    },
 }
 
+# === Fonction pour générer l'URL Vinted ===
+def generate_vinted_url(search_text, catalog_ids=None, size_ids=None, price_to=None, order="newest_first"):
+    base_url = "https://www.vinted.fr/catalog?"
+    params = []
 
-# Mémoire des annonces déjà envoyées
+    if search_text:
+        params.append(f"search_text={search_text.replace(' ', '+')}")
+
+    if catalog_ids:
+        for c in catalog_ids:
+            params.append(f"catalog[]={c}")
+
+    if size_ids:
+        for s in size_ids:
+            params.append(f"size_ids[]={s}")
+
+    if price_to:
+        params.append(f"price_to={price_to}")
+
+    if order:
+        params.append(f"order={order}")
+
+    return base_url + "&".join(params)
+
+
+# === Construction automatique de CHANNELS ===
+CHANNELS = {salon_id: generate_vinted_url(**criteria) for salon_id, criteria in SALON_CRITERIA.items()}
+
 seen_ids = {channel_id: set() for channel_id in CHANNELS.keys()}
 
-# Headers pour ressembler à un vrai navigateur
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                   "AppleWebKit/537.36 (KHTML, like Gecko) "
                   "Chrome/115.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
-    "Referer": "https://www.vinted.fr/",
-    "Connection": "keep-alive",
+    "Accept-Language": "fr-FR,fr;q=0.9",
 }
 
-
-# Intents Discord
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
 
-@tasks.loop(seconds=5)  # vérifie toutes les 5 secondes
+# === Fonction pour log dans le salon dédié ===
+async def log_error(message):
+    log_channel = client.get_channel(LOG_CHANNEL_ID)
+    if log_channel:
+        await log_channel.send(f"⚠️ {message}")
+    print(message)
+
+
+# === Boucle de scraping ===
 async def check_vinted():
-    """Vérifie les nouvelles annonces Vinted pour chaque recherche."""
-    for channel_id, url in CHANNELS.items():
-        channel = client.get_channel(channel_id)
-        if not channel:
-            continue
-
-        try:
-            r = requests.get(url, headers=HEADERS)
-            print(f"URL testée: {url}")
-            print(f"Status code: {r.status_code}")
-            print(f"Headers envoyés: {r.request.headers}")
-            print(f"Réponse brute: {r.text[:200]}")
-
-
-            if r.status_code != 200:
-                print(f"⚠️ Erreur HTTP {r.status_code} pour {url}")
+    await client.wait_until_ready()
+    while not client.is_closed():
+        for channel_id, url in CHANNELS.items():
+            channel = client.get_channel(channel_id)
+            if not channel:
+                await log_error(f"Salon {channel_id} introuvable")
                 continue
 
-            data = r.json()  # essaie de convertir en JSON
-            for item in data.get("items", []):
-                if item["id"] not in seen_ids[channel_id]:
-                    seen_ids[channel_id].add(item["id"])
-                    title = item["title"]
-                    price = item["price"]["amount"]
-                    link = f"https://www.vinted.fr{item['path']}"
+            try:
+                r = requests.get(url, headers=HEADERS, timeout=10)
+                if r.status_code != 200:
+                    await log_error(f"Erreur HTTP {r.status_code} pour {url}")
+                    continue
 
-                    msg = f"🔥 Nouvelle annonce : **{title}** - {price}€\n{link}"
+                soup = BeautifulSoup(r.text, "html.parser")
+                items = soup.find_all("div", class_=["feed-grid__item", "catalog-items__item"])
+                if not items:
+                    await log_error(f"Aucune annonce trouvée pour {url}")
+                    continue
+
+                for item in items:
+                    link_tag = item.find("a", href=True)
+                    if not link_tag:
+                        continue
+                    link = "https://www.vinted.fr" + link_tag.get("href")
+                    item_id = link.split("-")[-1]
+
+                    if item_id in seen_ids[channel_id]:
+                        continue
+                    seen_ids[channel_id].add(item_id)
+
+                    title_tag = item.find("div", class_=["feed-grid__item-title", "catalog-items__title"])
+                    price_tag = item.find("div", class_=["feed-grid__item-price", "catalog-items__price"])
+                    title = title_tag.text.strip() if title_tag else "No title"
+                    price = price_tag.text.strip() if price_tag else "N/A"
+
+                    msg = f"🔥 Nouvelle annonce : **{title}** - {price}\n{link}"
                     await channel.send(msg)
 
-        except Exception as e:
-            print("Erreur :", e)
-            print("Réponse brute :", r.text[:200])  # debug (200 premiers caractères)
+            except Exception as e:
+                await log_error(f"Exception sur {url}: {e}")
+
+        await asyncio.sleep(2)
 
 
 @client.event
 async def on_ready():
     print(f"✅ Connecté en tant que {client.user}")
-    check_vinted.start()  # démarre la boucle quand le bot est prêt
+    await log_error(f"Bot connecté en tant que {client.user}")
+    client.loop.create_task(check_vinted())
 
 
-# Lancement du bot
 client.run(TOKEN)
-
