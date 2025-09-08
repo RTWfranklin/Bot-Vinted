@@ -4,23 +4,31 @@ import os
 from discord.ext import tasks
 
 # === CONFIG BOT ===
-TOKEN = os.getenv("TOKEN")  # Récupère le token depuis Railway
+TOKEN = os.getenv("TOKEN")  # récupère ton token depuis Railway
 
-# Dictionnaire : un salon Discord = une recherche Vinted
+# Associe chaque salon Discord à une recherche Vinted
 CHANNELS = {
-    1414204024282026006: "https://www.vinted.fr/catalog?search_text=stone%20island&catalog[]=79&price_to=80&currency=EUR&size_ids[]=207&size_ids[]=208&size_ids[]=209&search_id=26351375935&order=newest_first&page=1&time=1757349003",
-    1414648706271019078: "https://www.vinted.fr/catalog?search_text=cp%20company&catalog[]=79&price_to=80&currency=EUR&size_ids[]=208&size_ids[]=207&size_ids[]=209&search_id=26351428301&order=newest_first&page=1&time=1757349111",
+    1414204024282026006: "https://www.vinted.fr/api/v2/catalog/items?search_text=stone%20island&catalog_ids=79&price_to=80&currency=EUR&size_ids[]=207&size_ids[]=208&size_ids[]=209&order=newest_first",
+    1414648706271019078: "https://www.vinted.fr/api/v2/catalog/items?search_text=cp%20company&catalog_ids=79&price_to=80&currency=EUR&size_ids[]=207&size_ids[]=208&size_ids[]=209&order=newest_first",
 }
 
 
-# Chaque salon garde une mémoire des IDs déjà vus
+# Mémoire des annonces déjà envoyées
 seen_ids = {channel_id: set() for channel_id in CHANNELS.keys()}
 
+# Headers pour ressembler à un vrai navigateur
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/115.0 Safari/537.36"
+}
+
+# Intents Discord
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
 
-@tasks.loop(seconds=5)  # Vérifie toutes les 5 secondes
+@tasks.loop(seconds=5)  # vérifie toutes les 5 secondes
 async def check_vinted():
     """Vérifie les nouvelles annonces Vinted pour chaque recherche."""
     for channel_id, url in CHANNELS.items():
@@ -29,8 +37,14 @@ async def check_vinted():
             continue
 
         try:
-            r = requests.get(url).json()
-            for item in r.get("items", []):
+            r = requests.get(url, headers=HEADERS)
+
+            if r.status_code != 200:
+                print(f"⚠️ Erreur HTTP {r.status_code} pour {url}")
+                continue
+
+            data = r.json()  # essaie de convertir en JSON
+            for item in data.get("items", []):
                 if item["id"] not in seen_ids[channel_id]:
                     seen_ids[channel_id].add(item["id"])
                     title = item["title"]
@@ -42,12 +56,13 @@ async def check_vinted():
 
         except Exception as e:
             print("Erreur :", e)
+            print("Réponse brute :", r.text[:200])  # debug (200 premiers caractères)
 
 
 @client.event
 async def on_ready():
     print(f"✅ Connecté en tant que {client.user}")
-    check_vinted.start()  # Démarre la boucle automatiquement quand le bot est prêt
+    check_vinted.start()  # démarre la boucle quand le bot est prêt
 
 
 # Lancement du bot
