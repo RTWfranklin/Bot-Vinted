@@ -20,8 +20,13 @@ seen_ids = {channel_id: set() for channel_id in CHANNELS.keys()}
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                   "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/115.0 Safari/537.36"
+                  "Chrome/115.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+    "Referer": "https://www.vinted.fr/",
+    "Connection": "keep-alive",
 }
+
 
 # Intents Discord
 intents = discord.Intents.default()
@@ -38,6 +43,11 @@ async def check_vinted():
 
         try:
             r = requests.get(url, headers=HEADERS)
+            print(f"URL testée: {url}")
+            print(f"Status code: {r.status_code}")
+            print(f"Headers envoyés: {r.request.headers}")
+            print(f"Réponse brute: {r.text[:200]}")
+
 
             if r.status_code != 200:
                 print(f"⚠️ Erreur HTTP {r.status_code} pour {url}")
@@ -67,3 +77,4 @@ async def on_ready():
 
 # Lancement du bot
 client.run(TOKEN)
+
