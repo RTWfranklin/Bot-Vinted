@@ -3,13 +3,13 @@ import os
 import asyncio
 import requests
 from bs4 import BeautifulSoup
+import re
 
 # === CONFIG BOT ===
 TOKEN = os.getenv("TOKEN")  # Ton token Discord
-LOG_CHANNEL_ID = 141500000000000000  # Salon pour les logs
+LOG_CHANNEL_ID = 141500000000000000  # Salon pour logs
 
 # === CRITÈRES POUR CHAQUE SALON ===
-# salon_id: critères (marque, catalog, tailles, prix max)
 SALON_CRITERIA = {
     1414204024282026006: {
         "search_text": "stone island",
@@ -25,7 +25,7 @@ SALON_CRITERIA = {
     },
 }
 
-# === Fonction pour générer l'URL Vinted ===
+# === Générateur automatique d'URLs Vinted ===
 def generate_vinted_url(search_text, catalog_ids=None, size_ids=None, price_to=None, order="newest_first"):
     base_url = "https://www.vinted.fr/catalog?"
     params = []
@@ -49,7 +49,6 @@ def generate_vinted_url(search_text, catalog_ids=None, size_ids=None, price_to=N
 
     return base_url + "&".join(params)
 
-
 # === Construction automatique de CHANNELS ===
 CHANNELS = {salon_id: generate_vinted_url(**criteria) for salon_id, criteria in SALON_CRITERIA.items()}
 
@@ -66,7 +65,7 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
 
-# === Fonction pour log dans le salon dédié ===
+# === Fonction pour envoyer les logs dans le salon dédié ===
 async def log_error(message):
     log_channel = client.get_channel(LOG_CHANNEL_ID)
     if log_channel:
@@ -101,19 +100,35 @@ async def check_vinted():
                     if not link_tag:
                         continue
                     link = "https://www.vinted.fr" + link_tag.get("href")
-                    item_id = link.split("-")[-1]
+
+                    # Extraire l'ID numérique fiable
+                    match = re.search(r'-(\d+)(?:\?|$)', link)
+                    item_id = match.group(1) if match else link
 
                     if item_id in seen_ids[channel_id]:
                         continue
                     seen_ids[channel_id].add(item_id)
 
+                    # Récupérer titre/prix
                     title_tag = item.find("div", class_=["feed-grid__item-title", "catalog-items__title"])
                     price_tag = item.find("div", class_=["feed-grid__item-price", "catalog-items__price"])
                     title = title_tag.text.strip() if title_tag else "No title"
                     price = price_tag.text.strip() if price_tag else "N/A"
 
-                    msg = f"🔥 Nouvelle annonce : **{title}** - {price}\n{link}"
-                    await channel.send(msg)
+                    # Récupérer première image
+                    img_tag = item.find("img")
+                    image_url = img_tag.get("src") if img_tag else None
+
+                    # Créer un embed Discord
+                    embed = discord.Embed(
+                        title=f"{title} - {price}",
+                        url=link,
+                        color=0xFF5733
+                    )
+                    if image_url:
+                        embed.set_image(url=image_url)
+
+                    await channel.send(embed=embed)
 
             except Exception as e:
                 await log_error(f"Exception sur {url}: {e}")
