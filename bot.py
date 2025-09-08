@@ -4,7 +4,6 @@ import asyncio
 import requests
 from bs4 import BeautifulSoup
 import re
-import urllib.parse
 import json
 
 # === CONFIG BOT ===
@@ -28,7 +27,7 @@ SALON_CRITERIA = {
     },
 }
 
-# === Générateur automatique d'URLs Vinted ===
+# === Générateur automatique d'URLs Vinted par page ===
 def generate_vinted_url(search_text, catalog_ids=None, size_ids=None, price_to=None, page=1, order="newest_first"):
     base_url = "https://www.vinted.fr/catalog?"
     params = []
@@ -48,7 +47,7 @@ def generate_vinted_url(search_text, catalog_ids=None, size_ids=None, price_to=N
 
     return base_url + "&".join(params)
 
-# === Construire CHANNELS avec URL page 1 par défaut ===
+# === Construction initiale des CHANNELS ===
 CHANNELS = {salon_id: generate_vinted_url(**criteria) for salon_id, criteria in SALON_CRITERIA.items()}
 
 HEADERS = {
@@ -65,17 +64,16 @@ client = discord.Client(intents=intents)
 if os.path.exists(SEEN_FILE):
     with open(SEEN_FILE, "r") as f:
         seen_ids = json.load(f)
-        # convertir clés en int (Discord channel IDs)
         seen_ids = {int(k): set(v) for k, v in seen_ids.items()}
 else:
     seen_ids = {channel_id: set() for channel_id in CHANNELS.keys()}
 
-# === Fonction pour sauvegarder les IDs vus ===
+# === Sauvegarde des IDs vus ===
 def save_seen_ids():
     with open(SEEN_FILE, "w") as f:
         json.dump({k: list(v) for k, v in seen_ids.items()}, f)
 
-# === Fonction pour log dans Discord ===
+# === Logs dans Discord ===
 async def log_error(message):
     log_channel = client.get_channel(LOG_CHANNEL_ID)
     if log_channel:
@@ -104,7 +102,7 @@ async def check_vinted():
                     soup = BeautifulSoup(r.text, "html.parser")
                     items = soup.find_all("div", class_=["feed-grid__item", "catalog-items__item"])
                     if not items:
-                        break  # plus de pages
+                        break
 
                     new_found = False
                     for item in items:
@@ -112,12 +110,12 @@ async def check_vinted():
                         if not link_tag:
                             continue
 
-                        link = "https://www.vinted.fr" + link_tag.get("href")
-                        link = link.strip()
-                        link = urllib.parse.quote(link, safe=":/?&=#")
+                        # URL propre vers l'annonce
+                        link = link_tag.get("href").strip()
                         if not link.startswith("http"):
-                            continue
+                            link = "https://www.vinted.fr" + link
 
+                        # ID numérique fiable
                         match = re.search(r'-(\d+)(?:\?|$)', link)
                         item_id = match.group(1) if match else link
 
@@ -146,7 +144,7 @@ async def check_vinted():
                         await channel.send(embed=embed)
 
                     if not new_found:
-                        break  # aucune nouvelle annonce sur cette page
+                        break  # pas de nouvelles annonces
                     page += 1  # passer à la page suivante
 
                 except Exception as e:
