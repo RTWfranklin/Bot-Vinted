@@ -1,8 +1,7 @@
 import discord, asyncio, os, re
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
+from selenium.webdriver.opera.options import Options
+from selenium.webdriver.opera.service import Service
 from pymongo import MongoClient
 
 # --- Variables d'environnement ---
@@ -57,17 +56,17 @@ def generate_vinted_url(criteria, page=1):
     params.append(f"page={page}")
     return base + "&".join(params)
 
-# --- Selenium headless (Chromium + Chromedriver fixes) ---
+# --- Selenium headless (OperaDriver) ---
 def get_driver():
     options = Options()
-    options.binary_location = "/usr/bin/chromium"  # chemin Chromium sur Railway
     options.add_argument("--headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
 
-    service = Service("/usr/bin/chromedriver")  # chemin Chromedriver sur Railway
-    driver = webdriver.Chrome(service=service, options=options)
+    # Remplace le chemin par le chemin vers ton operadriver.exe
+    service = Service("C:/chemin/vers/operadriver.exe")
+    driver = webdriver.Opera(service=service, options=options)
     return driver
 
 # --- Initialisation des annonces vues ---
@@ -78,11 +77,11 @@ async def init_seen_ids(driver):
             url = generate_vinted_url(criteria, page)
             try:
                 driver.get(url)
-                items = driver.find_elements(By.CSS_SELECTOR, "div.feed-grid__item, div.catalog-items__item")
+                items = driver.find_elements_by_css_selector("div.feed-grid__item, div.catalog-items__item")
                 if not items:
                     break
                 for item in items:
-                    link_tag = item.find_element(By.TAG_NAME, "a")
+                    link_tag = item.find_element_by_tag_name("a")
                     link = link_tag.get_attribute("href")
                     match = re.search(r'-(\d+)(?:\?|$)', link)
                     item_id = match.group(1) if match else link
@@ -108,12 +107,12 @@ async def check_vinted(driver):
                 url = generate_vinted_url(criteria, page)
                 try:
                     driver.get(url)
-                    items = driver.find_elements(By.CSS_SELECTOR, "div.feed-grid__item, div.catalog-items__item")
+                    items = driver.find_elements_by_css_selector("div.feed-grid__item, div.catalog-items__item")
                     if not items:
                         break
                     new_found = False
                     for item in items:
-                        link_tag = item.find_element(By.TAG_NAME, "a")
+                        link_tag = item.find_element_by_tag_name("a")
                         link = link_tag.get_attribute("href")
                         match = re.search(r'-(\d+)(?:\?|$)', link)
                         item_id = match.group(1) if match else link
@@ -123,7 +122,7 @@ async def check_vinted(driver):
                         new_found = True
                         title = item.get_attribute("data-title") or "No title"
                         price = item.get_attribute("data-price") or "N/A"
-                        img_tag = item.find_elements(By.TAG_NAME, "img")
+                        img_tag = item.find_elements_by_tag_name("img")
                         image_url = img_tag[0].get_attribute("src") if img_tag else None
                         embed = discord.Embed(title=f"{title} - {price}", url=link, color=0xFF5733)
                         if image_url:
