@@ -1,10 +1,10 @@
 import discord
 import requests
-import asyncio
 import os
+from discord.ext import tasks
 
 # === CONFIG BOT ===
-TOKEN = os.getenv("TOKEN")  # récupère le token depuis Railway
+TOKEN = os.getenv("TOKEN")  # Récupère le token depuis Railway
 
 # Dictionnaire : un salon Discord = une recherche Vinted
 CHANNELS = {
@@ -12,39 +12,43 @@ CHANNELS = {
     1414648706271019078: "https://www.vinted.fr/catalog?search_text=cp%20company&catalog[]=79&price_to=80&currency=EUR&size_ids[]=208&size_ids[]=207&size_ids[]=209&search_id=26351428301&order=newest_first&page=1&time=1757349111",
 }
 
+
+# Chaque salon garde une mémoire des IDs déjà vus
 seen_ids = {channel_id: set() for channel_id in CHANNELS.keys()}
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
+
+@tasks.loop(seconds=5)  # Vérifie toutes les 5 secondes
 async def check_vinted():
-    await client.wait_until_ready()
+    """Vérifie les nouvelles annonces Vinted pour chaque recherche."""
+    for channel_id, url in CHANNELS.items():
+        channel = client.get_channel(channel_id)
+        if not channel:
+            continue
 
-    while not client.is_closed():
         try:
-            for channel_id, url in CHANNELS.items():
-                channel = client.get_channel(channel_id)
-                if not channel:
-                    continue
+            r = requests.get(url).json()
+            for item in r.get("items", []):
+                if item["id"] not in seen_ids[channel_id]:
+                    seen_ids[channel_id].add(item["id"])
+                    title = item["title"]
+                    price = item["price"]["amount"]
+                    link = f"https://www.vinted.fr{item['path']}"
 
-                r = requests.get(url).json()
-                for item in r.get("items", []):
-                    if item["id"] not in seen_ids[channel_id]:
-                        seen_ids[channel_id].add(item["id"])
-                        title = item["title"]
-                        price = item["price"]["amount"]
-                        link = f"https://www.vinted.fr{item['path']}"
-                        msg = f"🔥 Nouvelle annonce : **{title}** - {price}€\n{link}"
-                        await channel.send(msg)
+                    msg = f"🔥 Nouvelle annonce : **{title}** - {price}€\n{link}"
+                    await channel.send(msg)
 
         except Exception as e:
             print("Erreur :", e)
 
-        await asyncio.sleep(5)  # vérifie toutes les 5 secondes
 
 @client.event
 async def on_ready():
     print(f"✅ Connecté en tant que {client.user}")
+    check_vinted.start()  # Démarre la boucle automatiquement quand le bot est prêt
 
-client.loop.create_task(check_vinted())
+
+# Lancement du bot
 client.run(TOKEN)
