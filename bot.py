@@ -3,15 +3,14 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
 from pymongo import MongoClient
 
 # --- Variables d'environnement ---
-TOKEN = os.getenv("TOKEN")  # Ton token Discord
-MONGO_URI = os.getenv("MONGO_URI")  # URI MongoDB
-LOG_CHANNEL_ID = 141500000000000000  # Mets ton salon de logs
+TOKEN = os.getenv("TOKEN")
+MONGO_URI = os.getenv("MONGO_URI")
+LOG_CHANNEL_ID = 141500000000000000  # Salon de logs
 
-# --- Critères par salon ---
+# --- Multi-salon / critères ---
 SALON_CRITERIA = {
     1414204024282026006: {
         "search_text": "stone island",
@@ -42,7 +41,7 @@ async def log_error(message):
         await log_channel.send(f"⚠️ {message}")
     print(message)
 
-# --- Génération d’URL ---
+# --- URL Generator ---
 def generate_vinted_url(criteria, page=1):
     base = "https://www.vinted.fr/catalog?"
     params = []
@@ -58,17 +57,20 @@ def generate_vinted_url(criteria, page=1):
     params.append(f"page={page}")
     return base + "&".join(params)
 
-# --- Selenium headless (Chromium/Chrome) ---
+# --- Selenium headless avec Chromium ---
 def get_driver():
     options = Options()
     options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    service = Service(ChromeDriverManager().install())
+    options.binary_location = "/usr/bin/chromium"  # chemin chromium
+
+    service = Service("/usr/bin/chromedriver")  # chemin chromedriver
     driver = webdriver.Chrome(service=service, options=options)
     return driver
 
-# --- Initialiser les annonces déjà vues ---
+# --- Initialisation des annonces vues ---
 async def init_seen_ids(driver):
     for channel_id, criteria in SALON_CRITERIA.items():
         page = 1
@@ -90,9 +92,9 @@ async def init_seen_ids(driver):
                 await log_error(f"Init Exception sur {url}: {e}")
                 break
             page += 1
-    await log_error("✅ Initialisation terminée.")
+    await log_error("✅ Initialisation terminée : seules les nouvelles annonces seront envoyées.")
 
-# --- Vérification boucle ---
+# --- Boucle principale ---
 async def check_vinted(driver):
     await client.wait_until_ready()
     while not client.is_closed():
@@ -133,7 +135,7 @@ async def check_vinted(driver):
                 except Exception as e:
                     await log_error(f"Exception sur {url}: {e}")
                     break
-        await asyncio.sleep(3)
+        await asyncio.sleep(2)
 
 @client.event
 async def on_ready():
