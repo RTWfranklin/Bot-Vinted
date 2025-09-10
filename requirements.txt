@@ -1,3 +1,5 @@
 beautifulsoup4==4.12.2
 requests==2.31.0
 discord.py==2.6.0
+playwright==1.45.0  # ou la dernière version disponible
+
