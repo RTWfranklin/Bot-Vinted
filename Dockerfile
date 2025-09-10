@@ -1,19 +1,31 @@
-# --- Image de base Python Debian complète ---
-FROM python:3.11-bullseye
+# --- Image de base Python slim ---
+FROM python:3.11-slim
 
+# --- Répertoire de travail ---
 WORKDIR /app
+
+# --- Copier les fichiers du projet ---
 COPY . .
 
-# --- Installer certificats SSL et dépendances pour TLS + Chromium ---
+# --- Installer certificats SSL et outils debug (nécessaires pour MongoDB Atlas) ---
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     openssl \
     libssl-dev \
-    chromium \
-    chromium-driver \
     wget \
     curl \
     unzip \
+    && update-ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- Mettre pip à jour et installer les dépendances Python ---
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
+
+# --- Installer Chromium et ses dépendances Linux nécessaires ---
+RUN apt-get update && apt-get install -y \
+    chromium \
+    chromium-driver \
     fonts-liberation \
     libnss3 \
     libx11-xcb1 \
@@ -35,13 +47,16 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+# --- Ajouter certificat CA MongoDB Atlas ---
+RUN curl -o /etc/ssl/certs/mongodb-ca.pem https://letsencrypt.org/certs/isrgrootx1.pem
 
+# --- Convertir start.sh en format Unix et le rendre exécutable ---
 RUN dos2unix /app/start.sh
 RUN chmod +x /app/start.sh
 
+# --- Variables d'environnement pour Chromium ---
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROME_PATH=/usr/lib/chromium/
 
+# --- Commande pour démarrer le bot ---
 CMD ["./start.sh"]
