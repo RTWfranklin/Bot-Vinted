@@ -7,19 +7,10 @@ WORKDIR /app
 # --- Copier les fichiers du projet ---
 COPY . .
 
-# --- Installer certificats SSL (nécessaires pour MongoDB Atlas) ---
+# --- Installer certificats SSL et utilitaires ---
 RUN apt-get update && apt-get install -y \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# --- Mettre pip à jour et installer les dépendances Python ---
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
-
-# --- Installer Chromium et ses dépendances Linux nécessaires ---
-RUN apt-get update && apt-get install -y \
     chromium \
-    chromium-driver \
     wget \
     curl \
     unzip \
@@ -43,6 +34,10 @@ RUN apt-get update && apt-get install -y \
     dos2unix \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
+
+# --- Mettre pip à jour et installer les dépendances Python ---
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
 
 # --- Convertir start.sh en format Unix et le rendre exécutable ---
 RUN dos2unix /app/start.sh
