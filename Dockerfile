@@ -1,13 +1,13 @@
-# --- Image de base ---
+# --- Image de base Python slim ---
 FROM python:3.11-slim
 
 # --- Répertoire de travail ---
 WORKDIR /app
 
-# --- Copier tout le projet ---
+# --- Copier les fichiers du projet ---
 COPY . .
 
-# --- Mettre à jour pip et installer les dépendances ---
+# --- Mettre pip à jour et installer les dépendances Python ---
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
@@ -20,7 +20,6 @@ RUN apt-get update && apt-get install -y \
     unzip \
     fonts-liberation \
     libnss3 \
-    libgconf-2-4 \
     libx11-xcb1 \
     libxcomposite1 \
     libxcursor1 \
@@ -39,8 +38,8 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-# --- Donner les permissions d'exécution à start.sh ---
+# --- S’assurer que start.sh est exécutable ---
 RUN chmod +x start.sh
 
-# --- Commande pour lancer le bot ---
+# --- Commande pour démarrer le bot ---
 CMD ["./start.sh"]
