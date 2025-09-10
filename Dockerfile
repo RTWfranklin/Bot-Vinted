@@ -7,11 +7,9 @@ WORKDIR /app
 # --- Copier les fichiers du projet ---
 COPY . .
 
-# --- Installer certificats SSL et utilitaires ---
+# --- Installer certificats SSL (MongoDB Atlas) et dépendances Linux pour Chromium/Playwright ---
 RUN apt-get update && apt-get install -y \
     ca-certificates \
-    chromium \
-    chromium-driver \
     wget \
     curl \
     unzip \
@@ -40,13 +38,16 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
+# --- Installer Playwright et ses navigateurs (Chromium) ---
+RUN playwright install chromium
+
 # --- Convertir start.sh en format Unix et le rendre exécutable ---
 RUN dos2unix /app/start.sh
 RUN chmod +x /app/start.sh
 
-# --- Variables d'environnement pour Chromium ---
+# --- Variables d'environnement pour Chromium/Playwright ---
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROME_PATH=/usr/lib/chromium/
 
-# --- Lancer le bot ---
+# --- Commande pour démarrer le bot ---
 CMD ["./start.sh"]
