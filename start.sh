@@ -1,4 +1,4 @@
-#!/bin/bash
-echo "=== Démarrage du bot ==="
-date
-python bot.py
+#!/bin/sh
+
+echo "=== Lancement du bot ==="
+python3 bot.py
