@@ -11,10 +11,8 @@ COPY . .
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-# --- Installer Chromium et ses dépendances Linux nécessaires ---
+# --- Installer dépendances Linux nécessaires ---
 RUN apt-get update && apt-get install -y \
-    chromium \
-    chromium-driver \
     wget \
     curl \
     unzip \
@@ -38,6 +36,13 @@ RUN apt-get update && apt-get install -y \
     libxss1 \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
+
+# --- Télécharger Chromium 140 portable et le rendre exécutable ---
+RUN wget -q https://commondatastorage.googleapis.com/chromium-browser-snapshots/Linux_x64/140733981/chrome-linux.zip -O /tmp/chrome-linux.zip \
+    && unzip /tmp/chrome-linux.zip -d /tmp \
+    && mv /tmp/chrome-linux/chrome /usr/bin/chromium \
+    && chmod +x /usr/bin/chromium \
+    && rm -rf /tmp/chrome-linux /tmp/chrome-linux.zip
 
 # --- S’assurer que start.sh est exécutable ---
 RUN chmod +x start.sh
