@@ -11,9 +11,10 @@ COPY . .
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-# --- Installer les dépendances nécessaires pour Chromium et dos2unix ---
+# --- Installer Chromium et ses dépendances ---
 RUN apt-get update && apt-get install -y \
     chromium \
+    chromium-driver \
     wget \
     curl \
     unzip \
@@ -41,6 +42,10 @@ RUN apt-get update && apt-get install -y \
 # --- Convertir start.sh en format Unix et le rendre exécutable ---
 RUN dos2unix /app/start.sh
 RUN chmod +x /app/start.sh
+
+# --- Variables d'environnement pour Chromium ---
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROME_PATH=/usr/lib/chromium/
 
 # --- Commande pour démarrer le bot ---
 CMD ["./start.sh"]
