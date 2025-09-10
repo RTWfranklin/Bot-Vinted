@@ -11,9 +11,10 @@ COPY . .
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-# --- Installer Chromium et ses dépendances Linux ---
+# --- Installer Chromium et ses dépendances Linux nécessaires ---
 RUN apt-get update && apt-get install -y \
     chromium \
+    chromium-driver \
     wget \
     curl \
     unzip \
@@ -37,7 +38,7 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-# --- S’assurer que start.sh est exécutable ---
+# --- Rendre start.sh exécutable ---
 RUN chmod +x start.sh
 
 # --- Commande pour démarrer le bot ---
