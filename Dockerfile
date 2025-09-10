@@ -7,6 +7,11 @@ WORKDIR /app
 # --- Copier les fichiers du projet ---
 COPY . .
 
+# --- Installer certificats SSL (nécessaires pour MongoDB Atlas) ---
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # --- Mettre pip à jour et installer les dépendances Python ---
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
