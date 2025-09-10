@@ -1,7 +1,4 @@
-import discord
-import asyncio
-import os
-import re
+import discord, asyncio, os, re
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -12,7 +9,7 @@ from pymongo import MongoClient
 # --- Variables d'environnement ---
 TOKEN = os.getenv("TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-LOG_CHANNEL_ID = 1415243356161703997  # Remplace par ton salon de logs si besoin
+LOG_CHANNEL_ID = 1415243356161703997  # Remplace par ton salon de logs
 
 # --- Multi-salon / critères ---
 SALON_CRITERIA = {
@@ -39,14 +36,14 @@ mongo = MongoClient(MONGO_URI)
 db = mongo["vinted_bot"]
 seen_col = db["seen_ids"]
 
-# --- Logging des erreurs ---
+# --- Logging ---
 async def log_error(message):
     log_channel = client.get_channel(LOG_CHANNEL_ID)
     if log_channel:
         await log_channel.send(f"⚠️ {message}")
     print(message)
 
-# --- Générateur d'URL Vinted ---
+# --- URL Generator ---
 def generate_vinted_url(criteria, page=1):
     base = "https://www.vinted.fr/catalog?"
     params = []
@@ -62,29 +59,34 @@ def generate_vinted_url(criteria, page=1):
     params.append(f"page={page}")
     return base + "&".join(params)
 
-# --- Selenium headless ---
+# --- Selenium headless (ChromeDriver auto) ---
 def get_driver():
     print("🔹 Création des options Chrome...")
     options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--disable-gpu")
+    options.headless = True
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    
-    # CHEMIN du binaire Chromium dans le conteneur Linux
-    options.binary_location = "/usr/bin/chromium-browser"  
-    print(f"🔹 Vérification du binaire Chromium : {os.path.exists(options.binary_location)}")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--window-size=1920,1080")
 
-    # Installation / récupération du ChromeDriver compatible
+    # Indiquer le binaire Chromium installé par apt sur Railway
+    chromium_path = "/usr/bin/chromium"
+    print(f"🔹 Vérification du binaire Chromium : {os.path.exists(chromium_path)}")
+    options.binary_location = chromium_path
+
     print("🔹 Installation/Utilisation de ChromeDriver via webdriver-manager...")
-    driver_path = ChromeDriverManager().install()
-    print(f"🔹 ChromeDriver installé ici : {driver_path}")
-    service = Service(driver_path)
+    service = Service(ChromeDriverManager().install())
+    print(f"🔹 ChromeDriver installé ici : {service.path}")
 
-    print("🔹 Démarrage de ChromeDriver...")
-    driver = webdriver.Chrome(service=service, options=options)
-    print("✅ ChromeDriver démarré avec succès !")
-    return driver
+    try:
+        print("🔹 Démarrage de ChromeDriver...")
+        driver = webdriver.Chrome(service=service, options=options)
+        print("✅ ChromeDriver démarré")
+        return driver
+    except Exception as e:
+        print(f"❌ Impossible de démarrer ChromeDriver : {e}")
+        raise e
 
 # --- Initialisation des annonces vues ---
 async def init_seen_ids(driver):
@@ -94,7 +96,6 @@ async def init_seen_ids(driver):
             url = generate_vinted_url(criteria, page)
             try:
                 driver.get(url)
-                print(f"🔹 Page chargée pour init : {url}")
                 items = driver.find_elements(By.CSS_SELECTOR, "div.feed-grid__item, div.catalog-items__item")
                 if not items:
                     break
@@ -111,7 +112,7 @@ async def init_seen_ids(driver):
             page += 1
     await log_error("✅ Initialisation terminée : seules les nouvelles annonces seront envoyées.")
 
-# --- Boucle principale pour vérifier les nouvelles annonces ---
+# --- Boucle principale ---
 async def check_vinted(driver):
     await client.wait_until_ready()
     while not client.is_closed():
@@ -125,7 +126,6 @@ async def check_vinted(driver):
                 url = generate_vinted_url(criteria, page)
                 try:
                     driver.get(url)
-                    print(f"🔹 Page chargée : {url}")
                     items = driver.find_elements(By.CSS_SELECTOR, "div.feed-grid__item, div.catalog-items__item")
                     if not items:
                         break
@@ -159,11 +159,7 @@ async def check_vinted(driver):
 async def on_ready():
     print(f"✅ Connecté en tant que {client.user}")
     await log_error(f"Bot connecté en tant que {client.user}")
-    try:
-        driver = get_driver()
-    except Exception as e:
-        await log_error(f"❌ Impossible de démarrer ChromeDriver : {e}")
-        return
+    driver = get_driver()
     await init_seen_ids(driver)
     client.loop.create_task(check_vinted(driver))
 
