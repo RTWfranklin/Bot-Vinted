@@ -9,9 +9,9 @@ from selenium.webdriver.common.by import By
 from pymongo import MongoClient
 
 # --- Variables d'environnement ---
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-LOG_CHANNEL_ID = 141500000000000000  # À remplacer par ton salon de logs
+LOG_CHANNEL_ID = 1415243356161703997  # À remplacer par ton salon de logs
 
 # --- Multi-salon / critères ---
 SALON_CRITERIA = {
@@ -147,3 +147,4 @@ async def on_ready():
     client.loop.create_task(check_vinted(driver))
 
 client.run(TOKEN)
+
