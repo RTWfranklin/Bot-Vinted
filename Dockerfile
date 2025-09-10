@@ -1,15 +1,14 @@
-# --- Image de base Python (Debian complète pour SSL stable) ---
+# --- Image de base Python Debian complète ---
 FROM python:3.11-bullseye
 
-# --- Répertoire de travail ---
 WORKDIR /app
-
-# --- Copier les fichiers du projet ---
 COPY . .
 
-# --- Installer certificats SSL et dépendances pour Chromium ---
+# --- Installer certificats SSL et dépendances pour TLS + Chromium ---
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    openssl \
+    libssl-dev \
     chromium \
     chromium-driver \
     wget \
@@ -36,17 +35,13 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-# --- Mettre pip à jour et installer les dépendances Python ---
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-# --- Convertir start.sh en format Unix et le rendre exécutable ---
 RUN dos2unix /app/start.sh
 RUN chmod +x /app/start.sh
 
-# --- Variables d'environnement pour Chromium ---
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROME_PATH=/usr/lib/chromium/
 
-# --- Commande pour démarrer le bot ---
 CMD ["./start.sh"]
