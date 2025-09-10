@@ -1,18 +1,30 @@
-import discord
-import asyncio
-import os
-import re
+import discord, asyncio, os, re
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from pymongo import MongoClient
 from webdriver_manager.chrome import ChromeDriverManager
+from pymongo import MongoClient
+import sys
 
 # --- Variables d'environnement ---
 TOKEN = os.getenv("TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 LOG_CHANNEL_ID = 1415243356161703997  # Remplace par ton salon de logs si besoin
+
+# --- Vérification MongoDB ---
+if not MONGO_URI:
+    print("❌ Erreur : la variable d'environnement MONGO_URI n'est pas définie !")
+    sys.exit(1)
+
+try:
+    mongo = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    mongo.server_info()  # Vérifie la connexion immédiatement
+except Exception as e:
+    print(f"❌ Impossible de se connecter à MongoDB : {e}")
+    sys.exit(1)
+
+db = mongo["vinted_bot"]
+seen_col = db["seen_ids"]
 
 # --- Multi-salon / critères ---
 SALON_CRITERIA = {
@@ -33,11 +45,6 @@ SALON_CRITERIA = {
 # --- Discord ---
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
-
-# --- MongoDB ---
-mongo = MongoClient(MONGO_URI)
-db = mongo["vinted_bot"]
-seen_col = db["seen_ids"]
 
 async def log_error(message):
     log_channel = client.get_channel(LOG_CHANNEL_ID)
@@ -61,20 +68,24 @@ def generate_vinted_url(criteria, page=1):
     params.append(f"page={page}")
     return base + "&".join(params)
 
-# --- Selenium headless avec ChromeDriver compatible Chromium 140 ---
+# --- Selenium headless ---
 def get_driver():
     options = Options()
-    options.add_argument("--headless")
+    options.add_argument("--headless=new")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.binary_location = "/usr/bin/chromium"  # chemin vers Chromium sur Linux/Railway
+    print("🔹 Création des options Chrome...")
 
-    # ChromeDriverManager avec driver_version pour correspondre à Chromium 140
-    driver_path = ChromeDriverManager(driver_version="140.0.7339.81").install()
-    service = Service(driver_path)
-    driver = webdriver.Chrome(service=service, options=options)
-    return driver
+    # Utilisation de ChromeDriverManager
+    try:
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+        print("🔹 ChromeDriver démarré avec succès !")
+        return driver
+    except Exception as e:
+        print(f"❌ Impossible de démarrer ChromeDriver : {e}")
+        sys.exit(1)
 
 # --- Initialisation des annonces vues ---
 async def init_seen_ids(driver):
@@ -84,11 +95,11 @@ async def init_seen_ids(driver):
             url = generate_vinted_url(criteria, page)
             try:
                 driver.get(url)
-                items = driver.find_elements(By.CSS_SELECTOR, "div.feed-grid__item, div.catalog-items__item")
+                items = driver.find_elements("css selector", "div.feed-grid__item, div.catalog-items__item")
                 if not items:
                     break
                 for item in items:
-                    link_tag = item.find_element(By.TAG_NAME, "a")
+                    link_tag = item.find_element("tag name", "a")
                     link = link_tag.get_attribute("href")
                     match = re.search(r'-(\d+)(?:\?|$)', link)
                     item_id = match.group(1) if match else link
@@ -100,7 +111,7 @@ async def init_seen_ids(driver):
             page += 1
     await log_error("✅ Initialisation terminée : seules les nouvelles annonces seront envoyées.")
 
-# --- Boucle principale pour vérifier les nouvelles annonces ---
+# --- Boucle principale ---
 async def check_vinted(driver):
     await client.wait_until_ready()
     while not client.is_closed():
@@ -114,12 +125,12 @@ async def check_vinted(driver):
                 url = generate_vinted_url(criteria, page)
                 try:
                     driver.get(url)
-                    items = driver.find_elements(By.CSS_SELECTOR, "div.feed-grid__item, div.catalog-items__item")
+                    items = driver.find_elements("css selector", "div.feed-grid__item, div.catalog-items__item")
                     if not items:
                         break
                     new_found = False
                     for item in items:
-                        link_tag = item.find_element(By.TAG_NAME, "a")
+                        link_tag = item.find_element("tag name", "a")
                         link = link_tag.get_attribute("href")
                         match = re.search(r'-(\d+)(?:\?|$)', link)
                         item_id = match.group(1) if match else link
@@ -129,7 +140,7 @@ async def check_vinted(driver):
                         new_found = True
                         title = item.get_attribute("data-title") or "No title"
                         price = item.get_attribute("data-price") or "N/A"
-                        img_tag = item.find_element(By.TAG_NAME, "img")
+                        img_tag = item.find_element("tag name", "img")
                         image_url = img_tag.get_attribute("src") if img_tag else None
                         embed = discord.Embed(title=f"{title} - {price}", url=link, color=0xFF5733)
                         if image_url:
