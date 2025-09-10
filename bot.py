@@ -36,7 +36,7 @@ mongo = MongoClient(MONGO_URI)
 db = mongo["vinted_bot"]
 seen_col = db["seen_ids"]
 
-# --- Logging ---
+# --- Logging simple ---
 async def log_error(message):
     log_channel = client.get_channel(LOG_CHANNEL_ID)
     if log_channel:
@@ -59,34 +59,30 @@ def generate_vinted_url(criteria, page=1):
     params.append(f"page={page}")
     return base + "&".join(params)
 
-# --- Selenium headless (ChromeDriver auto) ---
+# --- Selenium headless (Chromium) ---
 def get_driver():
     print("🔹 Création des options Chrome...")
     options = Options()
-    options.headless = True
+    options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--window-size=1920,1080")
-
-    # Indiquer le binaire Chromium installé par apt sur Railway
-    chromium_path = "/usr/bin/chromium"
-    print(f"🔹 Vérification du binaire Chromium : {os.path.exists(chromium_path)}")
-    options.binary_location = chromium_path
-
-    print("🔹 Installation/Utilisation de ChromeDriver via webdriver-manager...")
-    service = Service(ChromeDriverManager().install())
-    print(f"🔹 ChromeDriver installé ici : {service.path}")
+    
+    # Railway / Linux
+    options.binary_location = "/usr/bin/chromium"
 
     try:
+        print("🔹 Installation/Utilisation de ChromeDriver via webdriver-manager...")
+        service = Service(ChromeDriverManager().install())
+        print(f"🔹 ChromeDriver installé ici : {service.path}")
+
         print("🔹 Démarrage de ChromeDriver...")
         driver = webdriver.Chrome(service=service, options=options)
-        print("✅ ChromeDriver démarré")
+        print("✅ ChromeDriver démarré avec succès")
         return driver
     except Exception as e:
         print(f"❌ Impossible de démarrer ChromeDriver : {e}")
-        raise e
+        raise
 
 # --- Initialisation des annonces vues ---
 async def init_seen_ids(driver):
@@ -112,7 +108,7 @@ async def init_seen_ids(driver):
             page += 1
     await log_error("✅ Initialisation terminée : seules les nouvelles annonces seront envoyées.")
 
-# --- Boucle principale ---
+# --- Boucle principale pour vérifier les nouvelles annonces ---
 async def check_vinted(driver):
     await client.wait_until_ready()
     while not client.is_closed():
