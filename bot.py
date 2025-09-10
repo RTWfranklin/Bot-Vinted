@@ -3,13 +3,13 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
 from pymongo import MongoClient
+from webdriver_manager.chrome import ChromeDriverManager
 
 # --- Variables d'environnement ---
 TOKEN = os.getenv("TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-LOG_CHANNEL_ID = 1415243356161703997  # Remplace par ton salon de logs
+LOG_CHANNEL_ID = 1415243356161703997  # Remplace par ton salon de logs si besoin
 
 # --- Multi-salon / critères ---
 SALON_CRITERIA = {
@@ -36,7 +36,6 @@ mongo = MongoClient(MONGO_URI)
 db = mongo["vinted_bot"]
 seen_col = db["seen_ids"]
 
-# --- Logging simple ---
 async def log_error(message):
     log_channel = client.get_channel(LOG_CHANNEL_ID)
     if log_channel:
@@ -59,30 +58,18 @@ def generate_vinted_url(criteria, page=1):
     params.append(f"page={page}")
     return base + "&".join(params)
 
-# --- Selenium headless (Chromium) ---
+# --- Selenium headless (ChromeDriver forcé pour Chromium 140) ---
 def get_driver():
-    print("🔹 Création des options Chrome...")
     options = Options()
     options.add_argument("--headless")
-    options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    
-    # Railway / Linux
+    # Indique explicitement le binaire Chromium
     options.binary_location = "/usr/bin/chromium"
-
-    try:
-        print("🔹 Installation/Utilisation de ChromeDriver via webdriver-manager...")
-        service = Service(ChromeDriverManager().install())
-        print(f"🔹 ChromeDriver installé ici : {service.path}")
-
-        print("🔹 Démarrage de ChromeDriver...")
-        driver = webdriver.Chrome(service=service, options=options)
-        print("✅ ChromeDriver démarré avec succès")
-        return driver
-    except Exception as e:
-        print(f"❌ Impossible de démarrer ChromeDriver : {e}")
-        raise
+    # Force ChromeDriver correspondant à la version de Chromium
+    service = Service(ChromeDriverManager(version="140.0.7339.81").install())
+    driver = webdriver.Chrome(service=service, options=options)
+    return driver
 
 # --- Initialisation des annonces vues ---
 async def init_seen_ids(driver):
