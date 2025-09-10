@@ -1,4 +1,4 @@
-# --- Image de base Python slim ---
+# --- Image de base ---
 FROM python:3.11-slim
 
 # --- Répertoire de travail ---
@@ -7,18 +7,19 @@ WORKDIR /app
 # --- Copier les fichiers du projet ---
 COPY . .
 
-# --- Mettre pip à jour et installer les dépendances Python ---
+# --- Installer pip et dépendances Python ---
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
+RUN pip install selenium webdriver-manager
 
-# --- Installer dépendances Linux nécessaires ---
+# --- Installer Chromium et dépendances nécessaires ---
 RUN apt-get update && apt-get install -y \
+    chromium \
     wget \
     curl \
     unzip \
     fonts-liberation \
     libnss3 \
-    libgconf-2-0 \
     libx11-xcb1 \
     libxcomposite1 \
     libxcursor1 \
@@ -34,17 +35,9 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     libpango-1.0-0 \
     libxss1 \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
+    --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
-# --- Télécharger Chromium 140 portable et le rendre exécutable ---
-RUN wget -q https://commondatastorage.googleapis.com/chromium-browser-snapshots/Linux_x64/140733981/chrome-linux.zip -O /tmp/chrome-linux.zip \
-    && unzip /tmp/chrome-linux.zip -d /tmp \
-    && mv /tmp/chrome-linux/chrome /usr/bin/chromium \
-    && chmod +x /usr/bin/chromium \
-    && rm -rf /tmp/chrome-linux /tmp/chrome-linux.zip
-
-# --- S’assurer que start.sh est exécutable ---
+# --- Rendre start.sh exécutable ---
 RUN chmod +x start.sh
 
 # --- Commande pour démarrer le bot ---
