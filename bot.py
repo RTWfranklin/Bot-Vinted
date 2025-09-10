@@ -1,8 +1,11 @@
-import discord, asyncio, os, re
+import discord
+import asyncio
+import os
+import re
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from pymongo import MongoClient
 
@@ -16,13 +19,13 @@ SALON_CRITERIA = {
     1414204024282026006: {
         "search_text": "stone island",
         "catalog_ids": [79],
-        "size_ids": [207, 208, 209],
+        "size_ids": [207,208,209],
         "price_to": 80
     },
     1414648706271019078: {
         "search_text": "cp company",
         "catalog_ids": [79],
-        "size_ids": [207, 208, 209],
+        "size_ids": [207,208,209],
         "price_to": 80
     },
 }
@@ -36,13 +39,14 @@ mongo = MongoClient(MONGO_URI)
 db = mongo["vinted_bot"]
 seen_col = db["seen_ids"]
 
+# --- Logging des erreurs ---
 async def log_error(message):
     log_channel = client.get_channel(LOG_CHANNEL_ID)
     if log_channel:
         await log_channel.send(f"⚠️ {message}")
     print(message)
 
-# --- URL Generator ---
+# --- Générateur d'URL Vinted ---
 def generate_vinted_url(criteria, page=1):
     base = "https://www.vinted.fr/catalog?"
     params = []
@@ -60,13 +64,26 @@ def generate_vinted_url(criteria, page=1):
 
 # --- Selenium headless ---
 def get_driver():
+    print("🔹 Création des options Chrome...")
     options = Options()
     options.add_argument("--headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    service = Service(ChromeDriverManager().install())
+    
+    # CHEMIN du binaire Chromium dans le conteneur Linux
+    options.binary_location = "/usr/bin/chromium-browser"  
+    print(f"🔹 Vérification du binaire Chromium : {os.path.exists(options.binary_location)}")
+
+    # Installation / récupération du ChromeDriver compatible
+    print("🔹 Installation/Utilisation de ChromeDriver via webdriver-manager...")
+    driver_path = ChromeDriverManager().install()
+    print(f"🔹 ChromeDriver installé ici : {driver_path}")
+    service = Service(driver_path)
+
+    print("🔹 Démarrage de ChromeDriver...")
     driver = webdriver.Chrome(service=service, options=options)
+    print("✅ ChromeDriver démarré avec succès !")
     return driver
 
 # --- Initialisation des annonces vues ---
@@ -77,6 +94,7 @@ async def init_seen_ids(driver):
             url = generate_vinted_url(criteria, page)
             try:
                 driver.get(url)
+                print(f"🔹 Page chargée pour init : {url}")
                 items = driver.find_elements(By.CSS_SELECTOR, "div.feed-grid__item, div.catalog-items__item")
                 if not items:
                     break
@@ -93,7 +111,7 @@ async def init_seen_ids(driver):
             page += 1
     await log_error("✅ Initialisation terminée : seules les nouvelles annonces seront envoyées.")
 
-# --- Boucle principale ---
+# --- Boucle principale pour vérifier les nouvelles annonces ---
 async def check_vinted(driver):
     await client.wait_until_ready()
     while not client.is_closed():
@@ -107,6 +125,7 @@ async def check_vinted(driver):
                 url = generate_vinted_url(criteria, page)
                 try:
                     driver.get(url)
+                    print(f"🔹 Page chargée : {url}")
                     items = driver.find_elements(By.CSS_SELECTOR, "div.feed-grid__item, div.catalog-items__item")
                     if not items:
                         break
@@ -140,7 +159,11 @@ async def check_vinted(driver):
 async def on_ready():
     print(f"✅ Connecté en tant que {client.user}")
     await log_error(f"Bot connecté en tant que {client.user}")
-    driver = get_driver()
+    try:
+        driver = get_driver()
+    except Exception as e:
+        await log_error(f"❌ Impossible de démarrer ChromeDriver : {e}")
+        return
     await init_seen_ids(driver)
     client.loop.create_task(check_vinted(driver))
 
