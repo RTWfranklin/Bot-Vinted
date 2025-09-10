@@ -7,25 +7,14 @@ WORKDIR /app
 # --- Copier les fichiers du projet ---
 COPY . .
 
-# --- Installer certificats SSL et outils debug (nécessaires pour MongoDB Atlas) ---
+# --- Installer certificats SSL et utilitaires ---
 RUN apt-get update && apt-get install -y \
     ca-certificates \
-    openssl \
-    libssl-dev \
+    chromium \
+    chromium-driver \
     wget \
     curl \
     unzip \
-    && update-ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# --- Mettre pip à jour et installer les dépendances Python ---
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
-
-# --- Installer Chromium et ses dépendances Linux nécessaires ---
-RUN apt-get update && apt-get install -y \
-    chromium \
-    chromium-driver \
     fonts-liberation \
     libnss3 \
     libx11-xcb1 \
@@ -47,8 +36,9 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-# --- Ajouter certificat CA MongoDB Atlas ---
-RUN curl -o /etc/ssl/certs/mongodb-ca.pem https://letsencrypt.org/certs/isrgrootx1.pem
+# --- Mettre pip à jour et installer les dépendances Python ---
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
 
 # --- Convertir start.sh en format Unix et le rendre exécutable ---
 RUN dos2unix /app/start.sh
@@ -58,5 +48,5 @@ RUN chmod +x /app/start.sh
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROME_PATH=/usr/lib/chromium/
 
-# --- Commande pour démarrer le bot ---
+# --- Lancer le bot ---
 CMD ["./start.sh"]
