@@ -1,4 +1,4 @@
-# --- Image de base ---
+# --- Image de base Python slim ---
 FROM python:3.11-slim
 
 # --- Répertoire de travail ---
@@ -7,12 +7,11 @@ WORKDIR /app
 # --- Copier les fichiers du projet ---
 COPY . .
 
-# --- Installer pip et dépendances Python ---
+# --- Mettre pip à jour et installer les dépendances Python ---
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
-RUN pip install selenium webdriver-manager
 
-# --- Installer Chromium et dépendances nécessaires ---
+# --- Installer Chromium et ses dépendances essentielles ---
 RUN apt-get update && apt-get install -y \
     chromium \
     wget \
@@ -35,9 +34,10 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     libpango-1.0-0 \
     libxss1 \
-    --no-install-recommends && rm -rf /var/lib/apt/lists/*
+    --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
 
-# --- Rendre start.sh exécutable ---
+# --- S’assurer que start.sh est exécutable ---
 RUN chmod +x start.sh
 
 # --- Commande pour démarrer le bot ---
