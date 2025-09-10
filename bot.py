@@ -1,74 +1,77 @@
-import os
 import asyncio
-import datetime
-import logging
-from discord import SyncWebhook
+from discord import Client, Webhook
 from playwright.async_api import async_playwright
+import os
+from datetime import datetime
 
-# --- Configuration Logging ---
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("VintedBot")
-
-# --- Variables d'environnement ---
-DISCORD_TOKEN = os.environ.get("TOKEN")
-if not DISCORD_TOKEN:
-    raise ValueError("Le token Discord n'est pas défini !")
-
-# --- Configuration des articles à scraper ---
-SCRAP_CONFIG = [
-    {
-        "name": "Stone Island",
+# --- Configuration des URLs et salons Discord ---
+ARTICLES = {
+    "stone_island": {
         "url": "https://www.vinted.fr/catalog?search_text=stone%20island&catalog[]=79&price_to=80.0&currency=EUR&size_ids[]=207&size_ids[]=208&size_ids[]=209&search_id=26351375935&order=newest_first",
-        "webhook_url": os.environ.get("STONE_ISLAND_WEBHOOK")  # mettre le webhook Discord
+        "webhook_url": os.getenv("STONE_ISLAND_WEBHOOK")  # webhook Discord par type d'article
     },
-    {
-        "name": "CP Company",
-        "url": "https://www.vinted.fr/catalog?search_text=cp%20company&catalog[]=79&price_to=80.0&currency=EUR&size_ids[]=208&size_ids[]=207&size_ids[]=209&search_id=26351428301&order=newest_first",
-        "webhook_url": os.environ.get("CP_Company_WEBHOOK")
-    }
-]
+    "CP Company": {
+        "url": "https://www.vinted.fr/catalog?search_text=nike+shoes&order=newest_first",
+        "webhook_url": os.getenv("CP_Company_WEBHOOK")
+    },
+    # ajouter d'autres articles ici
+}
 
 SCRAP_INTERVAL = 2  # secondes
 
-# --- Scraping avec Playwright ---
-async def scrape_item(page, item_config):
-    await page.goto(item_config["url"])
-    # Exemple minimal : récupérer les titres des annonces
-    titles = await page.eval_on_selector_all(".CatalogItem__title", "elements => elements.map(e => e.textContent)")
-    logger.info(f"[{item_config['name']}] {len(titles)} annonces trouvées")
-    return titles
+# --- Client Discord ---
+client = Client(intents=None)  # pas besoin d'intents spécifiques pour les webhooks
 
-# --- Envoi sur Discord ---
-async def send_discord_message(webhook_url, message):
-    if not webhook_url:
-        logger.warning("Webhook non configuré pour cet article.")
+# --- Mémoriser les annonces déjà envoyées ---
+seen_items = {key: set() for key in ARTICLES.keys()}
+
+async def scrape_article(playwright, article_key, article_data):
+    browser = await playwright.chromium.launch(headless=True)
+    page = await browser.new_page()
+    await page.goto(article_data["url"])
+    
+    # On prend les annonces visibles sur la page
+    items = await page.query_selector_all("div.feed-grid__item")
+    
+    new_posts = []
+    for item in items:
+        link_elem = await item.query_selector("a.feed-grid__item-link")
+        if not link_elem:
+            continue
+        href = await link_elem.get_attribute("href")
+        if href in seen_items[article_key]:
+            continue
+        seen_items[article_key].add(href)
+        new_posts.append("https://www.vinted.fr" + href)
+    
+    await browser.close()
+    return new_posts
+
+async def send_to_discord(webhook_url, messages):
+    if not messages:
         return
-    webhook = SyncWebhook.from_url(webhook_url)
-    webhook.send(message)
+    webhook = Webhook.from_url(webhook_url, adapter=None)
+    for msg in messages:
+        try:
+            await webhook.send(msg)
+        except Exception as e:
+            print(f"Erreur Discord: {e}")
 
-# --- Boucle principale ---
 async def main_loop():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+    async with async_playwright() as playwright:
         while True:
-            for item_config in SCRAP_CONFIG:
-                try:
-                    titles = await scrape_item(page, item_config)
-                    if titles:
-                        message = f"Nouvelles annonces {item_config['name']} :\n" + "\n".join(titles[:5])
-                        await send_discord_message(item_config["webhook_url"], message)
-                except Exception as e:
-                    logger.error(f"Erreur scraping {item_config['name']}: {e}")
+            for key, data in ARTICLES.items():
+                new_posts = await scrape_article(playwright, key, data)
+                if new_posts:
+                    print(f"[{datetime.now()}] Nouveaux posts pour {key}: {len(new_posts)}")
+                await send_to_discord(data["webhook_url"], new_posts)
             await asyncio.sleep(SCRAP_INTERVAL)
 
-# --- Point d'entrée ---
-async def main():
-    logger.info("=== Démarrage du bot ===")
-    await main_loop()
+@client.event
+async def on_ready():
+    print(f"=== Bot Discord prêt : {client.user} ===")
+    asyncio.create_task(main_loop())
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Bot arrêté manuellement")
+# --- Lancer le bot ---
+DISCORD_TOKEN = os.getenv("TOKEN")
+client.run(DISCORD_TOKEN)
