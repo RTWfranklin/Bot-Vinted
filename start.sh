@@ -1,9 +1,11 @@
 #!/bin/bash
-# --- Script de lancement du bot Discord ---
+# --- start.sh pour le bot Discord avec Selenium ---
 
-echo "🔹 Lancement du bot..."
+# Afficher un message au démarrage pour debug
+echo "🔹 Démarrage du bot..."
 
-# Optionnel : définir le chemin de Chromium explicitement
-export CHROMIUM_BIN=/usr/bin/chromium
+# Activer le virtualenv si nécessaire (optionnel)
+# source /app/.venv/bin/activate
 
-python bot.py
+# Lancer le script Python principal
+python3 bot.py
