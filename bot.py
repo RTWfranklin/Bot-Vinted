@@ -1,63 +1,74 @@
+import os
 import asyncio
 import datetime
 import logging
-from discord import Client, Intents
+from discord import SyncWebhook
+from playwright.async_api import async_playwright
 
-# --- Configuration logging ---
+# --- Configuration Logging ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("VintedBot")
 
-# --- Discord bot token ---
-DISCORD_TOKEN = "TOKEN"  # Remplace par ton vrai token
+# --- Variables d'environnement ---
+DISCORD_TOKEN = os.environ.get("TOKEN")
+if not DISCORD_TOKEN:
+    raise ValueError("Le token Discord n'est pas défini !")
 
-# --- Configuration des scrapers : clé = nom du type d'article ---
-SCRAPERS = {
-    "stone_island": {
+# --- Configuration des articles à scraper ---
+SCRAP_CONFIG = [
+    {
+        "name": "Stone Island",
         "url": "https://www.vinted.fr/catalog?search_text=stone%20island&catalog[]=79&price_to=80.0&currency=EUR&size_ids[]=207&size_ids[]=208&size_ids[]=209&search_id=26351375935&order=newest_first",
-        "channel_id": 1414204024282026006,  # Remplace par l'ID du channel Discord
+        "webhook_url": os.environ.get("STONE_ISLAND_WEBHOOK")  # mettre le webhook Discord
     },
-    "CP Company": {
+    {
+        "name": "CP Company",
         "url": "https://www.vinted.fr/catalog?search_text=cp%20company&catalog[]=79&price_to=80.0&currency=EUR&size_ids[]=208&size_ids[]=207&size_ids[]=209&search_id=26351428301&order=newest_first",
-        "channel_id": 1414648706271019078,
-    },
-    # Ajoute autant de types que tu veux
-}
+        "webhook_url": os.environ.get("CP_Company_WEBHOOK")
+    }
+]
 
-# --- Initialisation du client Discord ---
-intents = Intents.default()
-intents.message_content = True
-client = Client(intents=intents)
+SCRAP_INTERVAL = 2  # secondes
 
-# --- Exemple de fonction de scrap (à remplacer par ton vrai scraper) ---
-async def scrape_vinted(search_url: str):
-    # Simule le scrap
-    await asyncio.sleep(0.5)
-    return [{"title": "Exemple article", "price": 50, "url": search_url}]
+# --- Scraping avec Playwright ---
+async def scrape_item(page, item_config):
+    await page.goto(item_config["url"])
+    # Exemple minimal : récupérer les titres des annonces
+    titles = await page.eval_on_selector_all(".CatalogItem__title", "elements => elements.map(e => e.textContent)")
+    logger.info(f"[{item_config['name']}] {len(titles)} annonces trouvées")
+    return titles
 
-# --- Envoi dans Discord ---
-async def send_to_discord(channel_id, items):
-    channel = client.get_channel(channel_id)
-    if channel is None:
-        logger.warning(f"Channel {channel_id} introuvable.")
+# --- Envoi sur Discord ---
+async def send_discord_message(webhook_url, message):
+    if not webhook_url:
+        logger.warning("Webhook non configuré pour cet article.")
         return
-    for item in items:
-        msg = f"Nouvelle annonce : {item['title']} - {item['price']}€\n{item['url']}"
-        await channel.send(msg)
-        logger.info(f"Annonce envoyée sur le channel {channel_id}: {item['title']}")
+    webhook = SyncWebhook.from_url(webhook_url)
+    webhook.send(message)
 
 # --- Boucle principale ---
 async def main_loop():
-    while True:
-        for key, config in SCRAPERS.items():
-            items = await scrape_vinted(config["url"])
-            await send_to_discord(config["channel_id"], items)
-        await asyncio.sleep(2)  # Scraper toutes les 2 secondes
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        while True:
+            for item_config in SCRAP_CONFIG:
+                try:
+                    titles = await scrape_item(page, item_config)
+                    if titles:
+                        message = f"Nouvelles annonces {item_config['name']} :\n" + "\n".join(titles[:5])
+                        await send_discord_message(item_config["webhook_url"], message)
+                except Exception as e:
+                    logger.error(f"Erreur scraping {item_config['name']}: {e}")
+            await asyncio.sleep(SCRAP_INTERVAL)
 
-# --- Hook pour lancer la boucle après connexion ---
-@client.event
-async def on_ready():
-    logger.info(f"{client.user} connecté sur Discord !")
-    asyncio.create_task(main_loop())
+# --- Point d'entrée ---
+async def main():
+    logger.info("=== Démarrage du bot ===")
+    await main_loop()
 
-# --- Lancer le bot ---
-client.run(DISCORD_TOKEN)
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot arrêté manuellement")
