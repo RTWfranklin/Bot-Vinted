@@ -11,10 +11,8 @@ COPY . .
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-# --- Installer Chromium et ses dépendances Linux nécessaires ---
+# --- Installer Chromium et ses dépendances pour Linux ---
 RUN apt-get update && apt-get install -y \
-    chromium \
-    chromium-driver \
     wget \
     curl \
     unzip \
@@ -35,16 +33,18 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     libpango-1.0-0 \
     libxss1 \
-    dos2unix \
-    --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
+    --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
-# --- Convertir start.sh en format Unix et le rendre exécutable ---
+# --- Télécharger Chromium 140 portable (linux64) et le placer dans /usr/bin/chromium ---
+RUN wget -q https://commondatastorage.googleapis.com/chromium-browser-snapshots/Linux_x64/140733981/chrome-linux.zip -O /tmp/chrome-linux.zip \
+    && unzip /tmp/chrome-linux.zip -d /tmp \
+    && mv /tmp/chrome-linux/chrome /usr/bin/chromium \
+    && chmod +x /usr/bin/chromium \
+    && rm -rf /tmp/chrome-linux /tmp/chrome-linux.zip
+
+# --- S’assurer que start.sh est exécutable ---
 RUN dos2unix start.sh
 RUN chmod +x start.sh
-
-# --- Ajouter les variables d'environnement par défaut (optionnel) ---
-ENV PATH="/usr/bin/chromium:/usr/bin/chromedriver:$PATH"
 
 # --- Commande pour démarrer le bot ---
 CMD ["./start.sh"]
