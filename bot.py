@@ -1,4 +1,7 @@
-import discord, asyncio, os, re
+import discord
+import asyncio
+import os
+import re
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -58,16 +61,18 @@ def generate_vinted_url(criteria, page=1):
     params.append(f"page={page}")
     return base + "&".join(params)
 
-# --- Selenium headless (ChromeDriver forcé pour Chromium 140) ---
+# --- Selenium headless avec ChromeDriver compatible Chromium 140 ---
 def get_driver():
     options = Options()
     options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    # Indique explicitement le binaire Chromium
-    options.binary_location = "/usr/bin/chromium"
-    # Force ChromeDriver correspondant à la version de Chromium
-    service = Service(ChromeDriverManager(version="140.0.7339.81").install())
+    options.binary_location = "/usr/bin/chromium"  # chemin vers Chromium sur Linux/Railway
+
+    # ChromeDriverManager avec driver_version pour correspondre à Chromium 140
+    driver_path = ChromeDriverManager(driver_version="140.0.7339.81").install()
+    service = Service(driver_path)
     driver = webdriver.Chrome(service=service, options=options)
     return driver
 
