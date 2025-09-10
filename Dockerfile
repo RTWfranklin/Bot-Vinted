@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     fonts-liberation \
     libnss3 \
+    libgconf-2-0 \
     libx11-xcb1 \
     libxcomposite1 \
     libxcursor1 \
@@ -38,7 +39,7 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-# --- Rendre start.sh exécutable ---
+# --- S’assurer que start.sh est exécutable ---
 RUN chmod +x start.sh
 
 # --- Commande pour démarrer le bot ---
