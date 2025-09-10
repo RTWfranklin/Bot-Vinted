@@ -1,30 +1,28 @@
-import discord
-import asyncio
-import os
-import re
+import discord, asyncio, os, re
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
 from pymongo import MongoClient
 
 # --- Variables d'environnement ---
 TOKEN = os.getenv("TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-LOG_CHANNEL_ID = 1415243356161703997  # À remplacer par ton salon de logs
+LOG_CHANNEL_ID = 1415243356161703997  # Remplace par ton salon de logs si besoin
 
 # --- Multi-salon / critères ---
 SALON_CRITERIA = {
     1414204024282026006: {
         "search_text": "stone island",
         "catalog_ids": [79],
-        "size_ids": [207,208,209],
+        "size_ids": [207, 208, 209],
         "price_to": 80
     },
     1414648706271019078: {
         "search_text": "cp company",
         "catalog_ids": [79],
-        "size_ids": [207,208,209],
+        "size_ids": [207, 208, 209],
         "price_to": 80
     },
 }
@@ -60,14 +58,15 @@ def generate_vinted_url(criteria, page=1):
     params.append(f"page={page}")
     return base + "&".join(params)
 
-# --- Selenium headless pour Railway ---
+# --- Selenium headless avec webdriver-manager ---
 def get_driver():
     options = Options()
-    options.binary_location = "/usr/bin/chromium"
     options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    service = Service("/usr/bin/chromedriver")
+
+    service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
     return driver
 
@@ -95,7 +94,7 @@ async def init_seen_ids(driver):
             page += 1
     await log_error("✅ Initialisation terminée : seules les nouvelles annonces seront envoyées.")
 
-# --- Boucle principale pour vérifier les nouvelles annonces ---
+# --- Boucle principale ---
 async def check_vinted(driver):
     await client.wait_until_ready()
     while not client.is_closed():
@@ -136,7 +135,7 @@ async def check_vinted(driver):
                 except Exception as e:
                     await log_error(f"Exception sur {url}: {e}")
                     break
-        await asyncio.sleep(5)
+        await asyncio.sleep(2)
 
 @client.event
 async def on_ready():
@@ -147,4 +146,3 @@ async def on_ready():
     client.loop.create_task(check_vinted(driver))
 
 client.run(TOKEN)
-
