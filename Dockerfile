@@ -7,7 +7,7 @@ WORKDIR /app
 # --- Copier les fichiers du projet ---
 COPY . .
 
-# --- Installer certificats SSL et utilitaires ---
+# --- Installer certificats SSL et dépendances Chromium ---
 RUN echo "=== Installation des paquets system ===" \
     && apt-get update \
     && apt-get install -y \
@@ -54,5 +54,5 @@ RUN echo "=== Préparation du script start.sh ===" \
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROME_PATH=/usr/lib/chromium/
 
-# --- Commande pour démarrer le bot avec log du démarrage ---
+# --- Commande pour démarrer le bot avec log ---
 CMD echo "=== Démarrage du bot ===" && ./start.sh
