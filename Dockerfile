@@ -35,11 +35,16 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     libpango-1.0-0 \
     libxss1 \
+    dos2unix \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-# --- S’assurer que start.sh est exécutable ---
+# --- Convertir start.sh en format Unix et le rendre exécutable ---
+RUN dos2unix start.sh
 RUN chmod +x start.sh
+
+# --- Ajouter les variables d'environnement par défaut (optionnel) ---
+ENV PATH="/usr/bin/chromium:/usr/bin/chromedriver:$PATH"
 
 # --- Commande pour démarrer le bot ---
 CMD ["./start.sh"]
