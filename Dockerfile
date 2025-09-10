@@ -14,7 +14,6 @@ RUN pip install -r requirements.txt
 # --- Installer Chromium et ses dépendances ---
 RUN apt-get update && apt-get install -y \
     chromium \
-    chromium-driver \
     wget \
     curl \
     unzip \
