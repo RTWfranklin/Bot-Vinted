@@ -1,93 +1,63 @@
 import asyncio
-import discord
-from discord import Webhook, RequestsWebhookAdapter
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from datetime import datetime
+import datetime
+import logging
+from discord import Client, Intents
 
-# --- CONFIGURATION ---
-DISCORD_TOKEN = "TOKEN"
+# --- Configuration logging ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("VintedBot")
 
-# Mapping type d'article → ID salon Discord
-ARTICLE_CHANNELS = {
-    "stone_island": 1414204024282026006,
-    "CP company": 1414648706271019078,
-    # ajoute autant de types que nécessaire
+# --- Discord bot token ---
+DISCORD_TOKEN = "TOKEN"  # Remplace par ton vrai token
+
+# --- Configuration des scrapers : clé = nom du type d'article ---
+SCRAPERS = {
+    "stone_island": {
+        "url": "https://www.vinted.fr/catalog?search_text=stone%20island&catalog[]=79&price_to=80.0&currency=EUR&size_ids[]=207&size_ids[]=208&size_ids[]=209&search_id=26351375935&order=newest_first",
+        "channel_id": 1414204024282026006,  # Remplace par l'ID du channel Discord
+    },
+    "CP Company": {
+        "url": "https://www.vinted.fr/catalog?search_text=cp%20company&catalog[]=79&price_to=80.0&currency=EUR&size_ids[]=208&size_ids[]=207&size_ids[]=209&search_id=26351428301&order=newest_first",
+        "channel_id": 1414648706271019078,
+    },
+    # Ajoute autant de types que tu veux
 }
 
-# URLs de scraping par type d'article
-ARTICLE_URLS = {
-    "stone_island": "https://www.vinted.fr/catalog?search_text=stone%20island&catalog[]=79&price_to=80.0&currency=EUR&size_ids[]=207&size_ids[]=208&size_ids[]=209&search_id=26351375935&order=newest_first",
-    "CP company": "https://www.vinted.fr/catalog?search_text=cp%20company&catalog[]=79&price_to=80.0&currency=EUR&size_ids[]=208&size_ids[]=207&size_ids[]=209&search_id=26351428301&order=newest_first",
-}
+# --- Initialisation du client Discord ---
+intents = Intents.default()
+intents.message_content = True
+client = Client(intents=intents)
 
-# --- INITIALISATION CLIENT DISCORD ---
-intents = discord.Intents.default()
-intents.messages = True
-client = discord.Client(intents=intents)
+# --- Exemple de fonction de scrap (à remplacer par ton vrai scraper) ---
+async def scrape_vinted(search_url: str):
+    # Simule le scrap
+    await asyncio.sleep(0.5)
+    return [{"title": "Exemple article", "price": 50, "url": search_url}]
 
-# --- Fonction utilitaire pour lancer Chrome headless ---
-def get_driver():
-    chrome_options = Options()
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--remote-debugging-port=9222")
-    driver = webdriver.Chrome(options=chrome_options)
-    return driver
-
-# --- Fonction de scrap simple ---
-async def scrap_articles(article_type):
-    url = ARTICLE_URLS[article_type]
-    driver = get_driver()
-    try:
-        driver.get(url)
-        # TODO : Adapter le scraping selon le HTML de Vinted
-        items = driver.find_elements("css selector", ".feed-grid__item")
-        results = []
-        for item in items[:5]:  # On prend uniquement les 5 derniers pour éviter spam
-            title = item.text.split("\n")[0]
-            link = item.find_element("tag name", "a").get_attribute("href")
-            results.append((title, link))
-        return results
-    finally:
-        driver.quit()
-
-# --- Fonction pour envoyer les annonces sur Discord ---
-async def send_to_discord(article_type, articles):
-    channel_id = ARTICLE_CHANNELS.get(article_type)
-    if not channel_id:
-        return
+# --- Envoi dans Discord ---
+async def send_to_discord(channel_id, items):
     channel = client.get_channel(channel_id)
-    if not channel:
-        print(f"⚠️ Salon Discord introuvable pour {article_type}")
+    if channel is None:
+        logger.warning(f"Channel {channel_id} introuvable.")
         return
-    for title, link in articles:
-        await channel.send(f"**{title}**\n{link}")
+    for item in items:
+        msg = f"Nouvelle annonce : {item['title']} - {item['price']}€\n{item['url']}"
+        await channel.send(msg)
+        logger.info(f"Annonce envoyée sur le channel {channel_id}: {item['title']}")
 
 # --- Boucle principale ---
 async def main_loop():
     while True:
-        print(f"[{datetime.utcnow()}] Lancement du scrap...")
-        tasks = [scrap_articles(article_type) for article_type in ARTICLE_URLS]
-        results = await asyncio.gather(*tasks)
-        for article_type, articles in zip(ARTICLE_URLS, results):
-            await send_to_discord(article_type, articles)
-        await asyncio.sleep(2)  # scrap toutes les 2 secondes
+        for key, config in SCRAPERS.items():
+            items = await scrape_vinted(config["url"])
+            await send_to_discord(config["channel_id"], items)
+        await asyncio.sleep(2)  # Scraper toutes les 2 secondes
 
-# --- Event on_ready ---
+# --- Hook pour lancer la boucle après connexion ---
 @client.event
 async def on_ready():
-    print(f"Connecté en tant que {client.user}")
-    client.loop.create_task(main_loop())
+    logger.info(f"{client.user} connecté sur Discord !")
+    asyncio.create_task(main_loop())
 
-# --- Lancement du bot ---
-async def main():
-    async with client:
-        await client.start(DISCORD_TOKEN)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+# --- Lancer le bot ---
+client.run(DISCORD_TOKEN)
