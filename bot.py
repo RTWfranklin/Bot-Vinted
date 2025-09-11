@@ -12,7 +12,7 @@ ARTICLES = {
     },
     "CP Company": {
         "url": "https://www.vinted.fr/catalog?search_text=cp+company&catalog[]=79&price_to=80.0&currency=EUR&size_ids[]=208&size_ids[]=207&size_ids[]=209&search_id=26351428301&order=newest_first",
-        "webhook_url": os.getenv("CP_Company_WEBHOOK")
+        "webhook_url": os.getenv("CP_COMPANY_WEBHOOK")  # ⚠️ corrige la casse ici
     },
     # Ajouter d'autres articles ici
 }
@@ -56,7 +56,8 @@ async def scrape_article(playwright, article_key, article_data):
     return new_posts
 
 async def send_to_discord(webhook_url, messages):
-    if not messages:
+    if not messages or not webhook_url:
+        print(f"[{datetime.now()}] ⚠️ Pas de webhook défini, envoi annulé.")
         return
     webhook = Webhook.from_url(webhook_url, client=client)
     for msg in messages:
@@ -79,8 +80,15 @@ async def main_loop():
 async def on_ready():
     print(f"=== Bot Discord prêt : {client.user} ===")
 
+    # 🔍 Debug : affichage des webhooks
+    print("STONE_ISLAND_WEBHOOK =", os.getenv("STONE_ISLAND_WEBHOOK"))
+    print("CP_COMPANY_WEBHOOK   =", os.getenv("CP_COMPANY_WEBHOOK"))
+
     # Envoi d'un message de test dans chaque webhook
     for key, data in ARTICLES.items():
+        if not data["webhook_url"]:
+            print(f"[{datetime.now()}] ❌ Aucun webhook configuré pour {key}")
+            continue
         try:
             webhook = Webhook.from_url(data["webhook_url"], client=client)
             await webhook.send(f"✅ Bot connecté et prêt à surveiller **{key}**")
