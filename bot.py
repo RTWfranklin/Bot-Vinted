@@ -12,59 +12,69 @@ ARTICLES = {
     },
     "CP Company": {
         "url": "https://www.vinted.fr/catalog?search_text=cp+company&catalog[]=79&price_to=80.0&currency=EUR&size_ids[]=208&size_ids[]=207&size_ids[]=209&search_id=26351428301&order=newest_first",
-        "webhook_url": os.getenv("CP_COMPANY_WEBHOOK")  # ⚠️ corrige la casse ici
+        "webhook_url": os.getenv("CP_COMPANY_WEBHOOK")
     },
-    # Ajouter d'autres articles ici
 }
 
-SCRAP_INTERVAL = 5  # secondes (j'ai mis 5 pour éviter trop de spam)
+SCRAP_INTERVAL = 5  # secondes
 
 client = Client(intents=None)
 
 # --- Mémoriser les annonces déjà envoyées ---
 seen_items = {key: set() for key in ARTICLES.keys()}
 
+
 async def scrape_article(playwright, article_key, article_data):
-    browser = await playwright.chromium.launch(headless=True)
-    page = await browser.new_page()
-    await page.goto(article_data["url"])
+    try:
+        browser = await playwright.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(article_data["url"])
 
-    items = await page.query_selector_all("div.feed-grid__item")
+        items = await page.query_selector_all("div.feed-grid__item")
 
-    new_posts = []
-    all_posts = []  # pour loguer tout ce qu'on scrap
+        new_posts = []
+        all_posts = []
 
-    for item in items:
-        link_elem = await item.query_selector("a.feed-grid__item-link")
-        if not link_elem:
-            continue
-        href = await link_elem.get_attribute("href")
-        url = "https://www.vinted.fr" + href
-        all_posts.append(url)
+        for item in items:
+            link_elem = await item.query_selector("a.feed-grid__item-link")
+            if not link_elem:
+                continue
+            href = await link_elem.get_attribute("href")
+            if not href:
+                continue
+            url = "https://www.vinted.fr" + href
+            all_posts.append(url)
 
-        if href not in seen_items[article_key]:
-            seen_items[article_key].add(href)
-            new_posts.append(url)
+            if href not in seen_items[article_key]:
+                seen_items[article_key].add(href)
+                new_posts.append(url)
 
-    await browser.close()
+        await browser.close()
 
-    # Log dans la console TOUTES les annonces vues
-    print(f"[{datetime.now()}] {article_key} - annonces scrapées ({len(all_posts)}):")
-    for post in all_posts:
-        print(f"   - {post}")
+        print(f"[{datetime.now()}] {article_key} - annonces scrapées ({len(all_posts)}):")
+        for post in all_posts:
+            print(f"   - {post}")
 
-    return new_posts
+        return new_posts
+    except Exception as e:
+        print(f"[{datetime.now()}] Erreur scraping {article_key}: {e}")
+        return []
+
 
 async def send_to_discord(webhook_url, messages):
-    if not messages or not webhook_url:
-        print(f"[{datetime.now()}] ⚠️ Pas de webhook défini, envoi annulé.")
+    if not webhook_url:
+        print(f"[{datetime.now()}] Webhook URL manquante !")
         return
-    webhook = Webhook.from_url(webhook_url, client=client)
-    for msg in messages:
-        try:
+    if not messages:
+        return
+    try:
+        webhook = Webhook.from_url(webhook_url, client=client)
+        for msg in messages:
             await webhook.send(msg)
-        except Exception as e:
-            print(f"Erreur Discord: {e}")
+        print(f"[{datetime.now()}] {len(messages)} messages envoyés via webhook")
+    except Exception as e:
+        print(f"[{datetime.now()}] Erreur Discord: {e}")
+
 
 async def main_loop():
     async with async_playwright() as playwright:
@@ -76,28 +86,29 @@ async def main_loop():
                     await send_to_discord(data["webhook_url"], new_posts)
             await asyncio.sleep(SCRAP_INTERVAL)
 
+
 @client.event
 async def on_ready():
     print(f"=== Bot Discord prêt : {client.user} ===")
 
-    # 🔍 Debug : affichage des webhooks
-    print("STONE_ISLAND_WEBHOOK =", os.getenv("STONE_ISLAND_WEBHOOK"))
-    print("CP_COMPANY_WEBHOOK   =", os.getenv("CP_COMPANY_WEBHOOK"))
-
-    # Envoi d'un message de test dans chaque webhook
+    # Envoi d'un message test dans chaque webhook
     for key, data in ARTICLES.items():
-        if not data["webhook_url"]:
-            print(f"[{datetime.now()}] ❌ Aucun webhook configuré pour {key}")
-            continue
         try:
-            webhook = Webhook.from_url(data["webhook_url"], client=client)
-            await webhook.send(f"✅ Bot connecté et prêt à surveiller **{key}**")
-            print(f"[{datetime.now()}] Message de test envoyé à {key}")
+            if data["webhook_url"]:
+                webhook = Webhook.from_url(data["webhook_url"], client=client)
+                await webhook.send(f"✅ Bot connecté et prêt à surveiller **{key}**")
+                print(f"[{datetime.now()}] Message de test envoyé à {key}")
+            else:
+                print(f"[{datetime.now()}] Webhook non configuré pour {key}")
         except Exception as e:
-            print(f"Erreur envoi test webhook {key}: {e}")
+            print(f"[{datetime.now()}] Erreur envoi test webhook {key}: {e}")
 
     asyncio.create_task(main_loop())
 
+
 # --- Lancer le bot ---
 DISCORD_TOKEN = os.getenv("TOKEN")
-client.run(DISCORD_TOKEN)
+if not DISCORD_TOKEN:
+    print("Erreur : la variable d'environnement TOKEN n'est pas définie !")
+else:
+    client.run(DISCORD_TOKEN)
