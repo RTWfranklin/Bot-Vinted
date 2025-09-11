@@ -1,17 +1,11 @@
 import asyncio
-from discord import Client, Webhook
-from playwright.async_api import async_playwright
 import os
 from datetime import datetime
-import subprocess
+import requests
+from bs4 import BeautifulSoup
+from discord import Client, Webhook
 
-# --- Installer les navigateurs Playwright si nécessaire ---
-try:
-    subprocess.run(["playwright", "install"], check=True)
-except Exception as e:
-    print(f"Erreur installation Playwright: {e}")
-
-# --- Configuration des URLs et webhooks Discord ---
+# --- Configuration des URLs et webhooks ---
 ARTICLES = {
     "stone_island": {
         "url": "https://www.vinted.fr/catalog?search_text=stone%20island&catalog[]=79&price_to=80.0&currency=EUR&size_ids[]=207&size_ids[]=208&size_ids[]=209&search_id=26351375935&order=newest_first",
@@ -24,93 +18,82 @@ ARTICLES = {
 }
 
 SCRAP_INTERVAL = 5  # secondes
-
 client = Client(intents=None)
 
 # --- Mémoriser les annonces déjà envoyées ---
 seen_items = {key: set() for key in ARTICLES.keys()}
 
-async def scrape_article(playwright, article_key, article_data):
+async def scrape_article(article_key, article_data):
     try:
-        browser = await playwright.chromium.launch(headless=True)
-        page = await browser.new_page()
-        await page.goto(article_data["url"])
-
-        items = await page.query_selector_all("div.feed-grid__item")
-
-        new_posts = []
-        all_posts = []
-
-        for item in items:
-            link_elem = await item.query_selector("a.feed-grid__item-link")
-            if not link_elem:
-                continue
-            href = await link_elem.get_attribute("href")
-            url = "https://www.vinted.fr" + href
-            all_posts.append(url)
-
-            if href not in seen_items[article_key]:
-                seen_items[article_key].add(href)
-                new_posts.append(url)
-
-        await browser.close()
-
-        # Log dans la console TOUTES les annonces vues
-        print(f"[{datetime.now()}] {article_key} - annonces scrapées ({len(all_posts)}):")
-        for post in all_posts:
-            print(f"   - {post}")
-
-        return new_posts
-
+        response = requests.get(article_data["url"], headers={"User-Agent": "Mozilla/5.0"})
+        response.raise_for_status()
     except Exception as e:
-        print(f"[{datetime.now()}] Erreur scraping {article_key}: {e}")
+        print(f"[{datetime.now()}] Erreur requête {article_key}: {e}")
         return []
 
+    soup = BeautifulSoup(response.text, "html.parser")
+    items = soup.select("div.feed-grid__item a.feed-grid__item-link")
+
+    new_posts = []
+    all_posts = []
+
+    for link in items:
+        href = link.get("href")
+        if not href:
+            continue
+        url = "https://www.vinted.fr" + href
+        all_posts.append(url)
+        if href not in seen_items[article_key]:
+            seen_items[article_key].add(href)
+            new_posts.append(url)
+
+    # Log toutes les annonces
+    print(f"[{datetime.now()}] {article_key} - annonces scrapées ({len(all_posts)}):")
+    for post in all_posts:
+        print(f"   - {post}")
+
+    return new_posts
+
 async def send_to_discord(webhook_url, messages):
-    if not messages or not webhook_url:
+    if not webhook_url:
+        print("Webhook non configuré !")
         return
-    try:
-        webhook = Webhook.from_url(webhook_url, client=client)
-        for msg in messages:
+    if not messages:
+        return
+    webhook = Webhook.from_url(webhook_url, client=client)
+    for msg in messages:
+        try:
             await webhook.send(msg)
-    except Exception as e:
-        print(f"Erreur Discord: {e}")
+        except Exception as e:
+            print(f"Erreur Discord: {e}")
 
 async def main_loop():
-    async with async_playwright() as playwright:
-        while True:
-            for key, data in ARTICLES.items():
-                if not data["webhook_url"]:
-                    print(f"[{datetime.now()}] Webhook non configuré pour {key}")
-                    continue
-
-                new_posts = await scrape_article(playwright, key, data)
-                if new_posts:
-                    print(f"[{datetime.now()}] Nouveaux posts pour {key}: {len(new_posts)}")
-                    await send_to_discord(data["webhook_url"], new_posts)
-            await asyncio.sleep(SCRAP_INTERVAL)
+    while True:
+        for key, data in ARTICLES.items():
+            new_posts = await scrape_article(key, data)
+            if new_posts:
+                print(f"[{datetime.now()}] Nouveaux posts pour {key}: {len(new_posts)}")
+                await send_to_discord(data["webhook_url"], new_posts)
+        await asyncio.sleep(SCRAP_INTERVAL)
 
 @client.event
 async def on_ready():
     print(f"=== Bot Discord prêt : {client.user} ===")
 
-    # Envoi d'un message de test dans chaque webhook
+    # Message test pour chaque webhook
     for key, data in ARTICLES.items():
-        if not data["webhook_url"]:
-            print(f"[{datetime.now()}] Webhook non configuré pour {key}")
-            continue
-        try:
-            webhook = Webhook.from_url(data["webhook_url"], client=client)
-            await webhook.send(f"✅ Bot connecté et prêt à surveiller **{key}**")
-            print(f"[{datetime.now()}] Message de test envoyé à {key}")
-        except Exception as e:
-            print(f"Erreur envoi test webhook {key}: {e}")
+        if data["webhook_url"]:
+            try:
+                webhook = Webhook.from_url(data["webhook_url"], client=client)
+                await webhook.send(f"✅ Bot connecté et prêt à surveiller **{key}**")
+                print(f"[{datetime.now()}] Message de test envoyé à {key}")
+            except Exception as e:
+                print(f"Erreur envoi test webhook {key}: {e}")
+        else:
+            print(f"Webhook non configuré pour {key}")
 
     asyncio.create_task(main_loop())
 
 # --- Lancer le bot ---
 DISCORD_TOKEN = os.getenv("TOKEN")
-if not DISCORD_TOKEN:
-    print("[ERROR] Variable d'environnement TOKEN non définie !")
-else:
-    client.run(DISCORD_TOKEN)
+client.run(DISCORD_TOKEN)
